@@ -1,18 +1,16 @@
 from pydantic_settings import BaseSettings
-import dotenv
-
-dotenv.load_dotenv()
-
-
+from functools import lru_cache
 
 class Settings(BaseSettings):
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 5432
-    DB_NAME: str = "stationery_db"
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = "Preetam77"
+    PROJECT_NAME: str = "Wholesale Stationery API"
+    DATABASE_URL: str
+    ENV: str = "local"
 
     class Config:
         env_file = ".env"
 
-settings = Settings()
+@lru_cache
+def get_settings():
+    return Settings()
+
+settings = get_settings()

@@ -11,3 +11,4 @@ from app.models.enquiry_items import EnquiryItem
 from app.models.email_logs import EmailLog
 from app.models.user_visits import UserVisit
 from app.models.admin_activity_logs import AdminActivityLog
+from app.models.brand import Brand

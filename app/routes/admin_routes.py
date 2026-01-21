@@ -60,6 +60,15 @@ def get_category_id(db) -> str:
     cat_id_max = int(cat_id_max.category_id[3:]) + 1
     return f"CAT{str(cat_id_max).zfill(4)}"
 
+def get_product_id(db) -> str:
+    prd_id_max = db.query(Product).order_by(Product.product_id.desc()).first()
+    if not prd_id_max: 
+        return f"PRD0001"
+
+    prd_id_max = int(prd_id_max.category_id[3:]) + 1
+    return f"PRD{str(prd_id_max).zfill(4)}"
+
+
 @router.post("/categories", status_code=201)
 def add_category(
     name: str,
@@ -120,7 +129,6 @@ def disable_category(category_id: str, db: Session = Depends(get_db)):
 
 @router.post("/products", status_code=201)
 def add_product(
-    product_id: str,
     category_id: str,
     name: str,
     description: str,
@@ -139,7 +147,7 @@ def add_product(
         f.write(image.file.read())
 
     product = Product(
-        product_id=product_id,
+        product_id=get_product_id(db),
         category_id=category_id,
         name=name,
         description=description,

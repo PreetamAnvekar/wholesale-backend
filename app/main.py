@@ -10,7 +10,7 @@ from app.db.init_db import reset_database
 app = FastAPI(title="Wholesale Stationery API")
 
 # ⚠️ RUN ONLY ON FIRST DEPLOY
-reset_database()
+# reset_database()
 
 app.add_middleware(
     CORSMiddleware,

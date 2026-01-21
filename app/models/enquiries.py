@@ -7,6 +7,7 @@ class Enquiry(Base):
 
     id = Column(Integer, primary_key=True)
     customer_name = Column(String(150))
+    address = Column(String(255))
     phone = Column(String(20))
     status = Column(String(50), default="New")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.db.session import get_db
+from app.models.brand import Brand
 from app.models.categories import Category
 from app.models.products import Product
 from app.models.cart import Cart
@@ -175,12 +176,25 @@ def remove_cart_item(product_id: str, session_id: str, db: Session = Depends(get
     db.commit()
     return {"message": "Item removed"}
 
+@router.get("/brands")
+def list_brands(db: Session = Depends(get_db)):
+    brands = db.query(Brand).filter(Brand.is_active == True).all()
+    return [
+        {
+            "brand_id": b.brand_id,
+            "name": b.name,
+            "image": f"/static/brand_images/{b.image}" if b.image else None
+        }
+        for b in brands
+    ]
+
+
 
 # ================= ENQUIRY =================
 
 @router.post("/enquiry")
-def submit_enquiry(customer_name: str, phone: str, session_id: str, db: Session = Depends(get_db)):
-    enquiry = Enquiry(customer_name=customer_name, phone=phone)
+def submit_enquiry(customer_name: str,address: str, phone: str, session_id: str, db: Session = Depends(get_db)):
+    enquiry = Enquiry(customer_name=customer_name,address=address, phone=phone)
     db.add(enquiry)
     db.commit()
     db.refresh(enquiry)

@@ -1,19 +1,20 @@
+import os
 import uuid
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 
 from app.models.admin_users import AdminUser
 from app.models.categories import Category
+from app.models.brand import Brand
 from app.models.products import Product
 from app.models.enquiries import Enquiry
 from app.models.enquiry_items import EnquiryItem
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
-
 # =====================================================
-# ADMIN LOGIN
+# 🔐 ADMIN LOGIN
 # =====================================================
 
 @router.post("/login")
@@ -34,94 +35,194 @@ def admin_login(username: str, password: str, db: Session = Depends(get_db)):
         "is_super_admin": admin.is_super_admin
     }
 
-
 # =====================================================
-# ADMIN DASHBOARD
+# 📊 DASHBOARD
 # =====================================================
 
 @router.get("/dashboard")
-def admin_dashboard(db: Session = Depends(get_db)):
+def dashboard(db: Session = Depends(get_db)):
     return {
-        "total_categories": db.query(Category).count(),
-        "total_products": db.query(Product).count(),
-        "total_enquiries": db.query(Enquiry).count()
+        "categories": db.query(Category).count(),
+        "brands": db.query(Brand).count(),
+        "products": db.query(Product).count(),
+        "enquiries": db.query(Enquiry).count()
     }
 
-
 # =====================================================
-# CATEGORY MANAGEMENT
+# 📦 CATEGORY CRUD
 # =====================================================
 
-def get_category_id(db) -> str:
-    cat_id_max = db.query(Category).order_by(Category.category_id.desc()).first()
-    if not cat_id_max: 
-        return f"CAT0001"
-
-    cat_id_max = int(cat_id_max.category_id[3:]) + 1
-    return f"CAT{str(cat_id_max).zfill(4)}"
+def generate_category_id(db):
+    last = db.query(Category).order_by(Category.id.desc()).first()
+    return f"CAT{str((last.id if last else 0)+1).zfill(4)}"
 
 @router.post("/categories", status_code=201)
-def add_category(
+def create_category(
     name: str,
     description: str,
     image: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    # create filename
-    ext = image.filename.split(".")[-1]
-    filename = f"{uuid.uuid4()}.{ext}"
+    filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
+    path = f"app/static/category_images/{filename}"
 
-    save_path = f"app/static/category_images/{filename}"
-
-    with open(save_path, "wb") as f:
+    with open(path, "wb") as f:
         f.write(image.file.read())
 
     category = Category(
-        category_id=get_category_id(db),
+        category_id=generate_category_id(db),
         name=name,
         description=description,
         image=filename
     )
     db.add(category)
     db.commit()
-
-    return {"message": "Category added successfully"}
-
-
+    return {"message": "Category created"}
 
 @router.get("/categories")
 def list_categories(db: Session = Depends(get_db)):
     return db.query(Category).order_by(Category.created_at.desc()).all()
 
+@router.put("/categories/{category_id}")
+def update_category(
+    category_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    image: UploadFile | None = File(None),
+    db: Session = Depends(get_db)
+):
+    category = db.query(Category).filter(Category.category_id == category_id).first()
+    if not category:
+        raise HTTPException(404, "Category not found")
+
+    if name:
+        category.name = name
+    if description:
+        category.description = description
+
+    if image:
+        if category.image:
+            old = f"app/static/category_images/{category.image}"
+            if os.path.exists(old):
+                os.remove(old)
+
+        filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
+        path = f"app/static/category_images/{filename}"
+        with open(path, "wb") as f:
+            f.write(image.file.read())
+        category.image = filename
+
+    db.commit()
+    return {"message": "Category updated"}
+
+@router.put("/categories/{category_id}/enable")
+def enable_category(category_id: str, db: Session = Depends(get_db)):
+    category = db.query(Category).filter(Category.category_id == category_id).first()
+    category.is_active = True
+    db.commit()
+    return {"message": "Category enabled"}
 
 @router.put("/categories/{category_id}/disable")
 def disable_category(category_id: str, db: Session = Depends(get_db)):
     category = db.query(Category).filter(Category.category_id == category_id).first()
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-
     category.is_active = False
     db.commit()
     return {"message": "Category disabled"}
 
-@router.put("/categories/{category_id}/enable")
-def disable_category(category_id: str, db: Session = Depends(get_db)):
-    category = db.query(Category).filter(Category.category_id == category_id & Category.is_active == False).first()
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    category.is_active = True
+@router.delete("/categories/{category_id}")
+def delete_category(category_id: str, db: Session = Depends(get_db)):
+    category = db.query(Category).filter(Category.category_id == category_id).first()
+    if category.image:
+        img = f"app/static/category_images/{category.image}"
+        if os.path.exists(img):
+            os.remove(img)
+    db.delete(category)
     db.commit()
-    return {"message": "Category disabled"}
+    return {"message": "Category deleted"}
 
 # =====================================================
-# PRODUCT MANAGEMENT
+# 🏷 BRAND CRUD
+# =====================================================
+
+def generate_brand_id(db):
+    last = db.query(Brand).order_by(Brand.id.desc()).first()
+    return f"BRD{str((last.id if last else 0)+1).zfill(4)}"
+
+@router.post("/brands", status_code=201)
+def create_brand(
+    name: str,
+    image: UploadFile | None = File(None),
+    db: Session = Depends(get_db)
+):
+    filename = None
+    if image:
+        filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
+        path = f"app/static/brand_images/{filename}"
+        with open(path, "wb") as f:
+            f.write(image.file.read())
+
+    brand = Brand(
+        brand_id=generate_brand_id(db),
+        name=name,
+        image=filename
+    )
+    db.add(brand)
+    db.commit()
+    return {"message": "Brand created"}
+
+@router.get("/brands")
+def list_brands(db: Session = Depends(get_db)):
+    return db.query(Brand).all()
+
+@router.put("/brands/{brand_id}")
+def update_brand(
+    brand_id: str,
+    name: str | None = None,
+    image: UploadFile | None = File(None),
+    db: Session = Depends(get_db)
+):
+    brand = db.query(Brand).filter(Brand.brand_id == brand_id).first()
+    if name:
+        brand.name = name
+
+    if image:
+        if brand.image:
+            old = f"app/static/brand_images/{brand.image}"
+            if os.path.exists(old):
+                os.remove(old)
+
+        filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
+        path = f"app/static/brand_images/{filename}"
+        with open(path, "wb") as f:
+            f.write(image.file.read())
+        brand.image = filename
+
+    db.commit()
+    return {"message": "Brand updated"}
+
+@router.put("/brands/{brand_id}/enable")
+def enable_brand(brand_id: str, db: Session = Depends(get_db)):
+    brand = db.query(Brand).filter(Brand.brand_id == brand_id).first()
+    brand.is_active = True
+    db.commit()
+    return {"message": "Brand enabled"}
+
+@router.put("/brands/{brand_id}/disable")
+def disable_brand(brand_id: str, db: Session = Depends(get_db)):
+    brand = db.query(Brand).filter(Brand.brand_id == brand_id).first()
+    brand.is_active = False
+    db.commit()
+    return {"message": "Brand disabled"}
+
+# =====================================================
+# 📦 PRODUCT CRUD
 # =====================================================
 
 @router.post("/products", status_code=201)
-def add_product(
+def create_product(
     product_id: str,
     category_id: str,
+    brand_id: str,
     name: str,
     description: str,
     price: float,
@@ -130,17 +231,16 @@ def add_product(
     image: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    ext = image.filename.split(".")[-1]
-    filename = f"{uuid.uuid4()}.{ext}"
+    filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
+    path = f"app/static/product_images/{filename}"
 
-    save_path = f"app/static/product_images/{filename}"
-
-    with open(save_path, "wb") as f:
+    with open(path, "wb") as f:
         f.write(image.file.read())
 
     product = Product(
         product_id=product_id,
         category_id=category_id,
+        brand_id=brand_id,
         name=name,
         description=description,
         price=price,
@@ -148,44 +248,68 @@ def add_product(
         stock=stock,
         image=filename
     )
-
     db.add(product)
     db.commit()
+    return {"message": "Product created"}
 
-    return {"message": "Product added successfully"}
+@router.put("/products/{product_id}")
+def update_product(
+    product_id: str,
+    name: str | None = None,
+    price: float | None = None,
+    stock: int | None = None,
+    image: UploadFile | None = File(None),
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(Product.product_id == product_id).first()
 
+    if name:
+        product.name = name
+    if price is not None:
+        product.price = price
+    if stock is not None:
+        product.stock = stock
 
+    if image:
+        if product.image:
+            old = f"app/static/product_images/{product.image}"
+            if os.path.exists(old):
+                os.remove(old)
 
-@router.get("/products")
-def list_products(db: Session = Depends(get_db)):
-    return db.query(Product).order_by(Product.created_at.desc()).all()
+        filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
+        path = f"app/static/product_images/{filename}"
+        with open(path, "wb") as f:
+            f.write(image.file.read())
+        product.image = filename
 
+    db.commit()
+    return {"message": "Product updated"}
+
+@router.put("/products/{product_id}/enable")
+def enable_product(product_id: str, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.product_id == product_id).first()
+    product.is_active = True
+    db.commit()
+    return {"message": "Product enabled"}
 
 @router.put("/products/{product_id}/disable")
 def disable_product(product_id: str, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.product_id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
     product.is_active = False
     db.commit()
     return {"message": "Product disabled"}
 
-
 # =====================================================
-# ENQUIRY MANAGEMENT
+# 📞 ENQUIRIES
 # =====================================================
 
 @router.get("/enquiries")
 def list_enquiries(db: Session = Depends(get_db)):
     return db.query(Enquiry).order_by(Enquiry.created_at.desc()).all()
 
-
 @router.get("/enquiries/{enquiry_id}")
 def enquiry_details(enquiry_id: int, db: Session = Depends(get_db)):
     enquiry = db.query(Enquiry).filter(Enquiry.id == enquiry_id).first()
-    if not enquiry:
-        raise HTTPException(status_code=404, detail="Enquiry not found")
 
     items = (
         db.query(EnquiryItem, Product)
@@ -195,18 +319,12 @@ def enquiry_details(enquiry_id: int, db: Session = Depends(get_db)):
     )
 
     return {
-        "enquiry": {
-            "id": enquiry.id,
-            "customer_name": enquiry.customer_name,
-            "phone": enquiry.phone,
-            "status": enquiry.status,
-            "created_at": enquiry.created_at
-        },
+        "enquiry": enquiry,
         "items": [
             {
                 "product_id": p.product_id,
                 "name": p.name,
-                "quantity": i.quantity,
+                "qty": i.quantity,
                 "price": float(p.price),
                 "total": float(i.quantity * p.price)
             }

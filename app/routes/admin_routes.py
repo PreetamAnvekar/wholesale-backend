@@ -310,7 +310,7 @@ def add_product(
         price=price,
         min_order_qty=min_order_qty,
         stock=stock,
-        image=path
+        image=filename
     )
     db.add(product)
     db.commit()

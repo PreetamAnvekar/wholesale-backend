@@ -2,7 +2,8 @@
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+# STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_DIR = "static"
 
 CATEGORY_DIR = os.path.join(STATIC_DIR, "category_images")
 PRODUCT_DIR = os.path.join(STATIC_DIR, "product_images")

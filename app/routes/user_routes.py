@@ -101,13 +101,19 @@ def product_details(product_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/products/featured")
+@router.get("/products")
 def featured_products(db: Session = Depends(get_db)):
-    products = db.query(Product).filter(Product.is_active == True).limit(8).all()
+    products = db.query(Product).filter(Product.is_active == True).all()
     return [
         {
             "product_id": p.product_id,
             "name": p.name,
+            "description": p.description,
+            "mrp": float(p.mrp),
+            "min_order_qty": p.min_order_qty,
+            "stock": p.stock,
+            "category_id": db.query(Category).filter(Category.category_id == p.category_id).first().name if p.category_id else p.category_id,
+            "brand_id": db.query(Brand).filter(Brand.brand_id == p.brand_id).first().name if p.brand_id else p.brand_id,
             "price": float(p.price),
             "image": f"/static/product_images/{p.image}"
         }

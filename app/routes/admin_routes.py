@@ -337,6 +337,61 @@ def disable_product(product_id: str, db: Session = Depends(get_db)):
 def list_products(db: Session = Depends(get_db)):
     return db.query(Product).order_by(Product.created_at.desc()).all()
 
+@router.put("/products/{product_id}")
+def update_product(
+    product_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    price: float | None = None,
+    stock: int | None = None,
+    category_id: str | None = None,
+    brand_id: str | None = None,
+    image: UploadFile | None = File(None),
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(Product.product_id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # 🔹 Update text fields
+    if name is not None:
+        product.name = name
+    if description is not None:
+        product.description = description
+    if price is not None:
+        product.price = price
+    if stock is not None:
+        product.stock = stock
+    if category_id is not None:
+        product.category_id = category_id
+    if brand_id is not None:
+        product.brand_id = brand_id
+
+    # 🔹 Update image (optional)
+    if image:
+        # delete old image
+        if product.image:
+            old_path = os.path.join(PRODUCT_DIR, product.image)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+
+        ext = image.filename.split(".")[-1]
+        filename = f"{uuid.uuid4()}.{ext}"
+        path = os.path.join(PRODUCT_DIR, filename)
+
+        with open(path, "wb") as f:
+            f.write(image.file.read())
+
+        product.image = filename
+
+    db.commit()
+
+    return {
+        "message": "Product updated successfully",
+        "product_id": product.product_id
+    }
+
+
 
 # =====================================================
 # 📞 ENQUIRIES

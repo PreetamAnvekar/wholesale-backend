@@ -5,10 +5,13 @@ from sqlalchemy import or_, and_
 from app.db.session import get_db
 from app.models.categories import Category
 from app.models.brand import Brand
+from app.models.email_logs import EmailLog
 from app.models.products import Product
 from app.models.cart import Cart
 from app.models.enquiries import Enquiry
 from app.models.enquiry_items import EnquiryItem
+from app.core.send_mail import send_email
+from app.core.config import settings
 
 router = APIRouter(prefix="/user", tags=["User"])
 
@@ -234,32 +237,162 @@ def clear_cart(session_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Cart cleared"}
 
-@router.post("/enquiry")
+# @router.post("/enquiry")
+# def submit_enquiry(
+#     customer_name: str,
+#     address: str,
+#     phone: str,
+#     session_id: str,
+#     db: Session = Depends(get_db)
+# ):
+#     enquiry = Enquiry(customer_name=customer_name, address=address, phone=phone)
+#     db.add(enquiry)
+#     db.commit()
+#     db.refresh(enquiry)
+
+#     cart_items = db.query(Cart).filter(Cart.session_id == session_id).all()
+
+#     for item in cart_items:
+#         db.add(EnquiryItem(
+#             enquiry_id=enquiry.id,
+#             product_id=item.product_id,
+#             quantity=item.quantity
+#         ))
+
+#     db.query(Cart).filter(Cart.session_id == session_id).delete()
+#     db.commit()
+
+#     return {"message": "Enquiry submitted successfully"}
+
+@router.post("/enquiry", status_code=201)
 def submit_enquiry(
     customer_name: str,
-    address: str,
+    email: str,
     phone: str,
+    address: str,
     session_id: str,
     db: Session = Depends(get_db)
 ):
-    enquiry = Enquiry(customer_name=customer_name, address=address, phone=phone)
+    cart_items = db.query(Cart).filter(Cart.session_id == session_id).all()
+
+    if not cart_items:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+
+    # Save enquiry
+    enquiry = Enquiry(
+        customer_name=customer_name,
+        email=email,
+        phone=phone,
+        address=address
+    )
     db.add(enquiry)
     db.commit()
     db.refresh(enquiry)
 
-    cart_items = db.query(Cart).filter(Cart.session_id == session_id).all()
+    # 2Save enquiry items
+    total_amount = 0
+    items_html = ""
 
     for item in cart_items:
-        db.add(EnquiryItem(
-            enquiry_id=enquiry.id,
-            product_id=item.product_id,
-            quantity=item.quantity
-        ))
+        product = db.query(Product).filter(
+            Product.product_id == item.product_id
+        ).first()
 
+        if product:
+            total = product.price * item.quantity
+            total_amount += total
+
+            items_html += f"""
+            <tr>
+                <td>{product.name}</td>
+                <td>{item.quantity}</td>
+                <td>₹{product.price}</td>
+                <td>₹{total}</td>
+            </tr>
+            """
+
+            db.add(EnquiryItem(
+                enquiry_id=enquiry.id,
+                product_id=item.product_id,
+                quantity=item.quantity
+            ))
+
+    db.commit()
+
+    #  Clear cart
     db.query(Cart).filter(Cart.session_id == session_id).delete()
     db.commit()
 
-    return {"message": "Enquiry submitted successfully"}
+    # ================= EMAIL CONTENT =================
+
+    admin_html = f"""
+    <h2>New Enquiry Received</h2>
+    <p><b>Name:</b> {customer_name}</p>
+    <p><b>Email:</b> {email}</p>
+    <p><b>Phone:</b> {phone}</p>
+    <p><b>Address:</b> {address}</p>
+
+    <table border="1" cellpadding="8" cellspacing="0">
+        <tr>
+            <th>Product</th><th>Qty</th><th>Price</th><th>Total</th>
+        </tr>
+        {items_html}
+    </table>
+
+    <h3>Total Amount: ₹{total_amount}</h3>
+    """
+
+    user_html = f"""
+    <h2>Enquiry Submitted Successfully</h2>
+    <p>Dear {customer_name},</p>
+    <p>Thank you for contacting us. We have received your enquiry.</p>
+
+    <table border="1" cellpadding="8" cellspacing="0">
+        <tr>
+            <th>Product</th><th>Qty</th><th>Price</th><th>Total</th>
+        </tr>
+        {items_html}
+    </table>
+
+    <h3>Total Amount: ₹{total_amount}</h3>
+
+    <p>Our team will contact you shortly.</p>
+    """
+
+    #  Send emails
+    send_email(
+        to_email=settings.ADMIN_EMAIL,
+        subject="New Wholesale Enquiry",
+        html_content=admin_html
+    )
+    # add into email_logs
+    email_log = EmailLog(
+        enquiry_id=enquiry.id,
+        email_to=settings.ADMIN_EMAIL,
+        sent_status=True
+    )
+    db.add(email_log)
+    db.commit()
+    db.refresh(email_log)
+
+    send_email(
+        to_email=email,
+        subject="Enquiry Received",
+        html_content=user_html
+    )
+    email_log = EmailLog(
+        enquiry_id=enquiry.id,
+        email_to=email,
+        sent_status=True
+    )
+    db.add(email_log)
+    db.commit()
+    db.refresh(email_log)
+
+    return {
+        "message": "Enquiry submitted successfully",
+        "enquiry_id": enquiry.id
+    }
 
 
 # ================= COMMON FORMATTER =================

@@ -10,5 +10,6 @@ class Enquiry(Base):
     address = Column(String(255))
     phone = Column(String(20))
     status = Column(String(50), default="New")
+    email = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     modified_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

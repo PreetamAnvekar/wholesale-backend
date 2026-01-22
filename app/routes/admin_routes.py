@@ -10,6 +10,7 @@ from app.models.brand import Brand
 from app.models.products import Product
 from app.models.enquiries import Enquiry
 from app.models.enquiry_items import EnquiryItem
+from app.core.storage import CATEGORY_DIR, PRODUCT_DIR, BRAND_DIR, ensure_dirs
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -107,7 +108,7 @@ def create_category(
     db: Session = Depends(get_db)
 ):
     filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
-    path = f"app/static/category_images/{filename}"
+    path = os.path.join(CATEGORY_DIR, filename)
 
     with open(path, "wb") as f:
         f.write(image.file.read())
@@ -147,12 +148,13 @@ def update_category(
 
     if image:
         if category.image:
-            old = f"app/static/category_images/{category.image}"
+            os.path.join(CATEGORY_DIR, category.image)
+            old = os.path.join(CATEGORY_DIR, category.image)
             if os.path.exists(old):
                 os.remove(old)
 
         filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
-        path = f"app/static/category_images/{filename}"
+        path = os.path.join(CATEGORY_DIR, filename)
         with open(path, "wb") as f:
             f.write(image.file.read())
         category.image = filename
@@ -181,7 +183,8 @@ def disable_category(category_id: str, db: Session = Depends(get_db)):
 def delete_category(category_id: str, db: Session = Depends(get_db)):
     category = db.query(Category).filter(Category.category_id == category_id).first()
     if category.image:
-        img = f"app/static/category_images/{category.image}"
+        
+        img = os.path.join(CATEGORY_DIR, category.image)
         if os.path.exists(img):
             os.remove(img)
     db.delete(category)
@@ -202,7 +205,7 @@ def create_brand(
     filename = None
     if image:
         filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
-        path = f"app/static/brand_images/{filename}"
+        path = os.path.join(BRAND_DIR, filename)
         with open(path, "wb") as f:
             f.write(image.file.read())
 
@@ -237,12 +240,13 @@ def update_brand(
 
     if image:
         if brand.image:
-            old = f"app/static/brand_images/{brand.image}"
+            
+            old = os.path.join(BRAND_DIR, brand.image)
             if os.path.exists(old):
                 os.remove(old)
 
         filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
-        path = f"app/static/brand_images/{filename}"
+        path = os.path.join(BRAND_DIR, filename)
         with open(path, "wb") as f:
             f.write(image.file.read())
         brand.image = filename
@@ -291,7 +295,7 @@ def add_product(
         raise HTTPException(400, "Invalid brand")
 
     filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
-    path = f"app/static/product_images/{filename}"
+    path = os.path.join(PRODUCT_DIR, filename)
 
     with open(path, "wb") as f:
         f.write(image.file.read())
@@ -306,7 +310,7 @@ def add_product(
         price=price,
         min_order_qty=min_order_qty,
         stock=stock,
-        image=filename
+        image=path
     )
     db.add(product)
     db.commit()

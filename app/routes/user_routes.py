@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
@@ -12,6 +13,7 @@ from app.models.enquiries import Enquiry
 from app.models.enquiry_items import EnquiryItem
 from app.core.send_mail import send_email
 from app.core.config import settings
+from app.core.storage import CATEGORY_DIR, PRODUCT_DIR, BRAND_DIR
 
 router = APIRouter(prefix="/user", tags=["User"])
 
@@ -24,7 +26,7 @@ def list_categories(db: Session = Depends(get_db)):
             "category_id": c.category_id,
             "name": c.name,
             "description": c.description,
-            "image": f"/static/category_images/{c.image}"
+            "image": os.path.join(CATEGORY_DIR, c.image)
         }
         for c in categories
     ]
@@ -44,7 +46,7 @@ def products_by_category(category_id: str, db: Session = Depends(get_db)):
             "price": float(p.price),
             "min_order_qty": p.min_order_qty,
             "stock": p.stock,
-            "image": f"/static/product_images/{p.image}"
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for p in products
     ]
@@ -56,7 +58,7 @@ def list_brands(db: Session = Depends(get_db)):
         {
             "brand_id": b.brand_id,
             "name": b.name,
-            "image": f"/static/brand_images/{b.image}" if b.image else None
+            "image": os.path.join(BRAND_DIR, b.image) if b.image else None
         }
         for b in brands
     ]
@@ -75,7 +77,7 @@ def products_by_brand(brand_id: str, db: Session = Depends(get_db)):
             "name": p.name,
             "price": float(p.price),
             "stock": p.stock,
-            "image": f"/static/product_images/{p.image}"
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for p in products
     ]
@@ -100,7 +102,7 @@ def product_details(product_id: str, db: Session = Depends(get_db)):
         "stock": product.stock,
         "category_id": product.category_id,
         "brand_id": product.brand_id,
-        "image": f"/static/product_images/{product.image}"
+        "image": os.path.join(PRODUCT_DIR, product.image)
     }
 
 
@@ -118,7 +120,7 @@ def featured_products(db: Session = Depends(get_db)):
             "category_id": db.query(Category).filter(Category.category_id == p.category_id).first().name if p.category_id else p.category_id,
             "brand_id": db.query(Brand).filter(Brand.brand_id == p.brand_id).first().name if p.brand_id else p.brand_id,
             "price": float(p.price),
-            "image": f"/static/product_images/{p.image}"
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for p in products
     ]
@@ -140,7 +142,7 @@ def search_products(q: str, db: Session = Depends(get_db)):
             "product_id": p.product_id,
             "name": p.name,
             "price": float(p.price),
-            "image": f"/static/product_images/{p.image}"
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for p in products
     ]
@@ -172,7 +174,7 @@ def filter_products(filters: dict, db: Session = Depends(get_db)):
             "name": p.name,
             "price": float(p.price),
             "min_order_qty": p.min_order_qty,
-            "image": f"/static/product_images/{p.image}"
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for p in products
     ]
@@ -210,7 +212,7 @@ def view_cart(session_id: str, db: Session = Depends(get_db)):
             "quantity": c.quantity,
             "price": float(p.price),
             "total_price": float(c.quantity * p.price),
-            "image": f"/static/product_images/{p.image}"
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for c, p in items
     ]
@@ -407,7 +409,7 @@ def format_products(products):
             "stock": p.stock,
             "category_id": p.category_id,
             "brand_id": p.brand_id,
-            "image": f"/static/product_images/{p.image}"
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for p in products
     ]

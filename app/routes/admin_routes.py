@@ -14,7 +14,7 @@ from app.models.enquiry_items import EnquiryItem
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 # =====================================================
-# 🔐 ADMIN LOGIN
+# 🔐 ADMIN AUTH
 # =====================================================
 
 @router.post("/login")
@@ -26,7 +26,7 @@ def admin_login(username: str, password: str, db: Session = Depends(get_db)):
     ).first()
 
     if not admin:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(401, "Invalid credentials")
 
     return {
         "admin_id": admin.id,
@@ -34,6 +34,35 @@ def admin_login(username: str, password: str, db: Session = Depends(get_db)):
         "email": admin.email,
         "is_super_admin": admin.is_super_admin
     }
+
+
+@router.post("/admins", status_code=201)
+def create_admin(
+    username: str,
+    password: str,
+    email: str,
+    is_super_admin: bool = False,
+    db: Session = Depends(get_db)
+):
+    exists = db.query(AdminUser).filter(
+        (AdminUser.username == username) |
+        (AdminUser.email == email)
+    ).first()
+
+    if exists:
+        raise HTTPException(400, "Admin already exists")
+
+    admin = AdminUser(
+        username=username,
+        password=password,  # ⚠️ hash later
+        email=email,
+        is_super_admin=is_super_admin,
+        is_active=True
+    )
+    db.add(admin)
+    db.commit()
+    return {"message": "Admin created"}
+
 
 # =====================================================
 # 📊 DASHBOARD
@@ -48,22 +77,27 @@ def dashboard(db: Session = Depends(get_db)):
         "enquiries": db.query(Enquiry).count()
     }
 
+
 # =====================================================
-# 📦 CATEGORY CRUD
+# 🔢 ID GENERATORS (SAFE)
 # =====================================================
 
 def generate_category_id(db):
     last = db.query(Category).order_by(Category.id.desc()).first()
     return f"CAT{str((last.id if last else 0)+1).zfill(4)}"
 
-def get_product_id(db) -> str:
-    prd_id_max = db.query(Product).order_by(Product.product_id.desc()).first()
-    if not prd_id_max: 
-        return f"PRD0001"
+def generate_brand_id(db):
+    last = db.query(Brand).order_by(Brand.id.desc()).first()
+    return f"BRD{str((last.id if last else 0)+1).zfill(4)}"
 
-    prd_id_max = int(prd_id_max.category_id[3:]) + 1
-    return f"PRD{str(prd_id_max).zfill(4)}"
+def generate_product_id(db):
+    last = db.query(Product).order_by(Product.id.desc()).first()
+    return f"PRD{str((last.id if last else 0)+1).zfill(4)}"
 
+
+# =====================================================
+# 📦 CATEGORY CRUD
+# =====================================================
 
 @router.post("/categories", status_code=201)
 def create_category(
@@ -88,9 +122,11 @@ def create_category(
     db.commit()
     return {"message": "Category created"}
 
+
 @router.get("/categories")
 def list_categories(db: Session = Depends(get_db)):
     return db.query(Category).order_by(Category.created_at.desc()).all()
+
 
 @router.put("/categories/{category_id}")
 def update_category(
@@ -124,6 +160,7 @@ def update_category(
     db.commit()
     return {"message": "Category updated"}
 
+
 @router.put("/categories/{category_id}/enable")
 def enable_category(category_id: str, db: Session = Depends(get_db)):
     category = db.query(Category).filter(Category.category_id == category_id).first()
@@ -131,12 +168,14 @@ def enable_category(category_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Category enabled"}
 
+
 @router.put("/categories/{category_id}/disable")
 def disable_category(category_id: str, db: Session = Depends(get_db)):
     category = db.query(Category).filter(Category.category_id == category_id).first()
     category.is_active = False
     db.commit()
     return {"message": "Category disabled"}
+
 
 @router.delete("/categories/{category_id}")
 def delete_category(category_id: str, db: Session = Depends(get_db)):
@@ -149,13 +188,10 @@ def delete_category(category_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Category deleted"}
 
+
 # =====================================================
 # 🏷 BRAND CRUD
 # =====================================================
-
-def generate_brand_id(db):
-    last = db.query(Brand).order_by(Brand.id.desc()).first()
-    return f"BRD{str((last.id if last else 0)+1).zfill(4)}"
 
 @router.post("/brands", status_code=201)
 def create_brand(
@@ -179,9 +215,11 @@ def create_brand(
     db.commit()
     return {"message": "Brand created"}
 
+
 @router.get("/brands")
 def list_brands(db: Session = Depends(get_db)):
-    return db.query(Brand).all()
+    return db.query(Brand).order_by(Brand.created_at.desc()).all()
+
 
 @router.put("/brands/{brand_id}")
 def update_brand(
@@ -191,6 +229,9 @@ def update_brand(
     db: Session = Depends(get_db)
 ):
     brand = db.query(Brand).filter(Brand.brand_id == brand_id).first()
+    if not brand:
+        raise HTTPException(404, "Brand not found")
+
     if name:
         brand.name = name
 
@@ -209,12 +250,14 @@ def update_brand(
     db.commit()
     return {"message": "Brand updated"}
 
+
 @router.put("/brands/{brand_id}/enable")
 def enable_brand(brand_id: str, db: Session = Depends(get_db)):
     brand = db.query(Brand).filter(Brand.brand_id == brand_id).first()
     brand.is_active = True
     db.commit()
     return {"message": "Brand enabled"}
+
 
 @router.put("/brands/{brand_id}/disable")
 def disable_brand(brand_id: str, db: Session = Depends(get_db)):
@@ -223,13 +266,13 @@ def disable_brand(brand_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Brand disabled"}
 
+
 # =====================================================
 # 📦 PRODUCT CRUD
 # =====================================================
 
 @router.post("/products", status_code=201)
 def add_product(
-    product_id: str,
     category_id: str,
     brand_id: str,
     name: str,
@@ -241,6 +284,12 @@ def add_product(
     image: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    if not db.query(Category).filter(Category.category_id == category_id, Category.is_active == True).first():
+        raise HTTPException(400, "Invalid category")
+
+    if not db.query(Brand).filter(Brand.brand_id == brand_id, Brand.is_active == True).first():
+        raise HTTPException(400, "Invalid brand")
+
     filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
     path = f"app/static/product_images/{filename}"
 
@@ -248,7 +297,7 @@ def add_product(
         f.write(image.file.read())
 
     product = Product(
-        product_id=get_product_id(db),
+        product_id=generate_product_id(db),
         category_id=category_id,
         brand_id=brand_id,
         name=name,
@@ -263,38 +312,6 @@ def add_product(
     db.commit()
     return {"message": "Product created"}
 
-@router.put("/products/{product_id}")
-def update_product(
-    product_id: str,
-    name: str | None = None,
-    price: float | None = None,
-    stock: int | None = None,
-    image: UploadFile | None = File(None),
-    db: Session = Depends(get_db)
-):
-    product = db.query(Product).filter(Product.product_id == product_id).first()
-
-    if name:
-        product.name = name
-    if price is not None:
-        product.price = price
-    if stock is not None:
-        product.stock = stock
-
-    if image:
-        if product.image:
-            old = f"app/static/product_images/{product.image}"
-            if os.path.exists(old):
-                os.remove(old)
-
-        filename = f"{uuid.uuid4()}.{image.filename.split('.')[-1]}"
-        path = f"app/static/product_images/{filename}"
-        with open(path, "wb") as f:
-            f.write(image.file.read())
-        product.image = filename
-
-    db.commit()
-    return {"message": "Product updated"}
 
 @router.put("/products/{product_id}/enable")
 def enable_product(product_id: str, db: Session = Depends(get_db)):
@@ -303,12 +320,19 @@ def enable_product(product_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Product enabled"}
 
+
 @router.put("/products/{product_id}/disable")
 def disable_product(product_id: str, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.product_id == product_id).first()
     product.is_active = False
     db.commit()
     return {"message": "Product disabled"}
+
+
+@router.get("/products")
+def list_products(db: Session = Depends(get_db)):
+    return db.query(Product).order_by(Product.created_at.desc()).all()
+
 
 # =====================================================
 # 📞 ENQUIRIES
@@ -317,6 +341,7 @@ def disable_product(product_id: str, db: Session = Depends(get_db)):
 @router.get("/enquiries")
 def list_enquiries(db: Session = Depends(get_db)):
     return db.query(Enquiry).order_by(Enquiry.created_at.desc()).all()
+
 
 @router.get("/enquiries/{enquiry_id}")
 def enquiry_details(enquiry_id: int, db: Session = Depends(get_db)):

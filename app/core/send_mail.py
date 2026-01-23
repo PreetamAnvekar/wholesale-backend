@@ -1,28 +1,34 @@
-from email.message import EmailMessage
-import aiosmtplib
-import logging
+
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
 from app.core.config import settings
+import logging
+
+# Configure API key
+configuration = sib_api_v3_sdk.Configuration()
+configuration.api_key["api-key"] = settings.BREVO_API_KEY
+
+api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+    sib_api_v3_sdk.ApiClient(configuration)
+)
 
 
-async def send_email_async(to_email: str, subject: str, html_content: str):
-    msg = EmailMessage()
-    msg["From"] = settings.ADMIN_EMAIL  # VERIFIED BREVO SENDER
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.set_content(html_content, subtype="html")
-
+def send_mail(to_email: str, subject: str, html_content: str):
     try:
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.SMTP_HOST,
-            port=int(settings.SMTP_PORT),
-            start_tls=True,
-            username=settings.SMTP_USER,
-            password=settings.SMTP_PASSWORD,
-            timeout=30,
+        email = sib_api_v3_sdk.SendSmtpEmail(
+            to=[{"email": to_email}],
+            sender={
+                "email": settings.ADMIN_EMAIL,
+                "name": "Wholesale Stationery"
+            },
+            subject=subject,
+            html_content=html_content,
         )
-        logging.info(f"Email sent to {to_email}")
+
+        api_instance.send_transac_email(email)
+        logging.info(f"Brevo email sent to {to_email}")
         return True
-    except Exception as e:
-        logging.exception(f"Email failed for {to_email}")
+
+    except ApiException as e:
+        logging.exception("Brevo email failed")
         return False

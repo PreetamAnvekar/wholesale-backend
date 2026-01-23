@@ -46,7 +46,7 @@ def products_by_category(category_id: str, db: Session = Depends(get_db)):
             "price": float(p.price),
             "min_order_qty": p.min_order_qty,
             "stock": p.stock,
-            "image": os.path.join(PRODUCT_DIR, p.image)
+            "image": os.path.join(PRODUCT_DIR, p.image).split('app/')[-1]
         }
         for p in products
     ]
@@ -77,7 +77,7 @@ def products_by_brand(brand_id: str, db: Session = Depends(get_db)):
             "name": p.name,
             "price": float(p.price),
             "stock": p.stock,
-            "image": os.path.join(PRODUCT_DIR, p.image)
+            "image": os.path.join(PRODUCT_DIR, p.image).split('app/')[-1]
         }
         for p in products
     ]
@@ -102,7 +102,7 @@ def product_details(product_id: str, db: Session = Depends(get_db)):
         "stock": product.stock,
         "category_id": product.category_id,
         "brand_id": product.brand_id,
-        "image": os.path.join(PRODUCT_DIR, product.image)
+        "image": os.path.join(PRODUCT_DIR, product.image).split('app/')[-1]
     }
 
 
@@ -120,7 +120,7 @@ def featured_products(db: Session = Depends(get_db)):
             "category_id": db.query(Category).filter(Category.category_id == p.category_id).first().name if p.category_id else p.category_id,
             "brand_id": db.query(Brand).filter(Brand.brand_id == p.brand_id).first().name if p.brand_id else p.brand_id,
             "price": float(p.price),
-            "image": os.path.join(PRODUCT_DIR, p.image)
+            "image": os.path.join(PRODUCT_DIR, p.image).split('app/')[-1]
         }
         for p in products
     ]
@@ -142,7 +142,7 @@ def search_products(q: str, db: Session = Depends(get_db)):
             "product_id": p.product_id,
             "name": p.name,
             "price": float(p.price),
-            "image": os.path.join(PRODUCT_DIR, p.image)
+            "image": os.path.join(PRODUCT_DIR, p.image).split('app/')[-1]
         }
         for p in products
     ]
@@ -174,7 +174,7 @@ def filter_products(filters: dict, db: Session = Depends(get_db)):
             "name": p.name,
             "price": float(p.price),
             "min_order_qty": p.min_order_qty,
-            "image": os.path.join(PRODUCT_DIR, p.image)
+            "image": os.path.join(PRODUCT_DIR, p.image).split('app/')[-1]
         }
         for p in products
     ]
@@ -397,7 +397,7 @@ def format_products(products):
             "stock": p.stock,
             "category_id": p.category_id,
             "brand_id": p.brand_id,
-            "image": os.path.join(PRODUCT_DIR, p.image)
+            "image": os.path.join(PRODUCT_DIR, p.image).split('app/')[-1]
         }
         for p in products
     ]

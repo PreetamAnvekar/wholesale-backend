@@ -265,7 +265,6 @@ def clear_cart(session_id: str, db: Session = Depends(get_db)):
 #     db.commit()
 
 #     return {"message": "Enquiry submitted successfully"}
-
 @router.post("/enquiry", status_code=201)
 def submit_enquiry(
     customer_name: str,
@@ -280,7 +279,6 @@ def submit_enquiry(
     if not cart_items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
-    # Save enquiry
     enquiry = Enquiry(
         customer_name=customer_name,
         email=email,
@@ -291,41 +289,46 @@ def submit_enquiry(
     db.commit()
     db.refresh(enquiry)
 
-    # 2Save enquiry items
     total_amount = 0
     items_html = ""
 
     for item in cart_items:
         product = db.query(Product).filter(
-            Product.product_id == item.product_id
+            Product.product_id == item.product_id,
+            Product.is_active == True
         ).first()
 
-        if product:
-            total = product.price * item.quantity
-            total_amount += total
+        if not product:
+            continue
 
-            items_html += f"""
-            <tr>
-                <td>{product.name}</td>
-                <td>{item.quantity}</td>
-                <td>₹{product.price}</td>
-                <td>₹{total}</td>
-            </tr>
-            """
+        if product.stock < item.quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{product.name} is out of stock"
+            )
 
-            db.add(EnquiryItem(
-                enquiry_id=enquiry.id,
-                product_id=item.product_id,
-                quantity=item.quantity
-            ))
+        total = product.price * item.quantity
+        total_amount += total
+
+        items_html += f"""
+        <tr>
+            <td>{product.name}</td>
+            <td>{item.quantity}</td>
+            <td>₹{product.price}</td>
+            <td>₹{total}</td>
+        </tr>
+        """
+
+        db.add(EnquiryItem(
+            enquiry_id=enquiry.id,
+            product_id=item.product_id,
+            quantity=item.quantity
+        ))
 
     db.commit()
 
-    #  Clear cart
     db.query(Cart).filter(Cart.session_id == session_id).delete()
     db.commit()
-
-    # ================= EMAIL CONTENT =================
 
     admin_html = f"""
     <h2>New Enquiry Received</h2>
@@ -333,69 +336,55 @@ def submit_enquiry(
     <p><b>Email:</b> {email}</p>
     <p><b>Phone:</b> {phone}</p>
     <p><b>Address:</b> {address}</p>
-
-    <table border="1" cellpadding="8" cellspacing="0">
-        <tr>
-            <th>Product</th><th>Qty</th><th>Price</th><th>Total</th>
-        </tr>
+    <table border="1" cellpadding="8">
+        <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
         {items_html}
     </table>
-
     <h3>Total Amount: ₹{total_amount}</h3>
     """
 
     user_html = f"""
-    <h2>Enquiry Submitted Successfully</h2>
+    <h2>Enquiry Submitted</h2>
     <p>Dear {customer_name},</p>
-    <p>Thank you for contacting us. We have received your enquiry.</p>
-
-    <table border="1" cellpadding="8" cellspacing="0">
-        <tr>
-            <th>Product</th><th>Qty</th><th>Price</th><th>Total</th>
-        </tr>
+    <table border="1" cellpadding="8">
+        <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
         {items_html}
     </table>
-
     <h3>Total Amount: ₹{total_amount}</h3>
-
-    <p>Our team will contact you shortly.</p>
     """
 
-    #  Send emails
-    send_email(
-        to_email=settings.ADMIN_EMAIL,
-        subject="New Wholesale Enquiry",
-        html_content=admin_html
-    )
-    # add into email_logs
-    email_log = EmailLog(
+    # Admin mail
+    try:
+        send_email(settings.ADMIN_EMAIL, "New Enquiry", admin_html)
+        admin_sent = True
+    except Exception:
+        admin_sent = False
+
+    db.add(EmailLog(
         enquiry_id=enquiry.id,
         email_to=settings.ADMIN_EMAIL,
-        sent_status=True
-    )
-    db.add(email_log)
+        sent_status=admin_sent
+    ))
     db.commit()
-    db.refresh(email_log)
 
-    send_email(
-        to_email=email,
-        subject="Enquiry Received",
-        html_content=user_html
-    )
-    email_log = EmailLog(
+    # User mail
+    try:
+        send_email(email, "Enquiry Received", user_html)
+        user_sent = True
+    except Exception:
+        user_sent = False
+
+    db.add(EmailLog(
         enquiry_id=enquiry.id,
         email_to=email,
-        sent_status=True
-    )
-    db.add(email_log)
+        sent_status=user_sent
+    ))
     db.commit()
-    db.refresh(email_log)
 
     return {
         "message": "Enquiry submitted successfully",
         "enquiry_id": enquiry.id
     }
-
 
 # ================= COMMON FORMATTER =================
 def format_products(products):

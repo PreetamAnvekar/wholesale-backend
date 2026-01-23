@@ -11,7 +11,7 @@ from app.models.products import Product
 from app.models.cart import Cart
 from app.models.enquiries import Enquiry
 from app.models.enquiry_items import EnquiryItem
-from app.core.send_mail import send_email
+from app.core.send_mail import send_email_async
 from app.core.config import settings
 from app.core.storage import CATEGORY_DIR, PRODUCT_DIR, BRAND_DIR
 

@@ -266,7 +266,7 @@ def clear_cart(session_id: str, db: Session = Depends(get_db)):
 
 #     return {"message": "Enquiry submitted successfully"}
 @router.post("/enquiry", status_code=201)
-def submit_enquiry(
+async def submit_enquiry(
     customer_name: str,
     email: str,
     phone: str,
@@ -353,32 +353,31 @@ def submit_enquiry(
     <h3>Total Amount: ₹{total_amount}</h3>
     """
 
-    # Admin mail
-    try:
-        send_email(settings.ADMIN_EMAIL, "New Enquiry", admin_html)
-        admin_sent = True
-    except Exception:
-        admin_sent = False
+    # 🔥 ASYNC EMAILS (NO BLOCKING)
+    admin_sent = await send_email_async(
+        settings.ADMIN_EMAIL,
+        "New Enquiry",
+        admin_html
+    )
 
-    db.add(EmailLog(
-        enquiry_id=enquiry.id,
-        email_to=settings.ADMIN_EMAIL,
-        sent_status=admin_sent
-    ))
-    db.commit()
+    user_sent = await send_email_async(
+        email,
+        "Enquiry Received",
+        user_html
+    )
 
-    # User mail
-    try:
-        send_email(email, "Enquiry Received", user_html)
-        user_sent = True
-    except Exception:
-        user_sent = False
-
-    db.add(EmailLog(
-        enquiry_id=enquiry.id,
-        email_to=email,
-        sent_status=user_sent
-    ))
+    db.add_all([
+        EmailLog(
+            enquiry_id=enquiry.id,
+            email_to=settings.ADMIN_EMAIL,
+            sent_status=admin_sent
+        ),
+        EmailLog(
+            enquiry_id=enquiry.id,
+            email_to=email,
+            sent_status=user_sent
+        )
+    ])
     db.commit()
 
     return {

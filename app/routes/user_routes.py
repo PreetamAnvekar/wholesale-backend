@@ -11,7 +11,7 @@ from app.models.products import Product
 from app.models.cart import Cart
 from app.models.enquiries import Enquiry
 from app.models.enquiry_items import EnquiryItem
-from app.core.send_mail import send_email_async
+from app.core.send_mail import send_mail
 from app.core.config import settings
 from app.core.storage import CATEGORY_DIR, PRODUCT_DIR, BRAND_DIR
 
@@ -354,17 +354,17 @@ async def submit_enquiry(
     """
 
     # 🔥 ASYNC EMAILS (NO BLOCKING)
-    admin_sent = await send_email_async(
-        settings.ADMIN_EMAIL,
-        "New Enquiry",
-        admin_html
-    )
+    admin_sent = send_mail(
+    settings.ADMIN_EMAIL,
+    "New Enquiry",
+    admin_html
+)
 
-    user_sent = await send_email_async(
-        email,
-        "Enquiry Received",
-        user_html
-    )
+    user_sent = send_mail(
+    email,
+    "Enquiry Received",
+    user_html
+)
 
     db.add_all([
         EmailLog(

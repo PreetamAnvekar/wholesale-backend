@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     SMTP_USER: str
     SMTP_PASSWORD: str
     ADMIN_EMAIL: str
+    BREVO_API_KEY: str
 
     class Config:
         env_file = ".env"

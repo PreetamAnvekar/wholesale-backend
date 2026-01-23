@@ -26,7 +26,7 @@ def list_categories(db: Session = Depends(get_db)):
             "category_id": c.category_id,
             "name": c.name,
             "description": c.description,
-            "image": os.path.join(CATEGORY_DIR, c.image)
+            "image": os.path.join(CATEGORY_DIR, c.image).split('app/')[-1]
         }
         for c in categories
     ]
@@ -58,7 +58,7 @@ def list_brands(db: Session = Depends(get_db)):
         {
             "brand_id": b.brand_id,
             "name": b.name,
-            "image": os.path.join(BRAND_DIR, b.image) if b.image else None
+            "image": os.path.join(BRAND_DIR, b.image).split('app/')[-1] if b.image else None
         }
         for b in brands
     ]
@@ -212,7 +212,7 @@ def view_cart(session_id: str, db: Session = Depends(get_db)):
             "quantity": c.quantity,
             "price": float(p.price),
             "total_price": float(c.quantity * p.price),
-            "image": os.path.join(PRODUCT_DIR, p.image)
+            "image": os.path.join(PRODUCT_DIR, p.image).split('app/')[-1]
         }
         for c, p in items
     ]

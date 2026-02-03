@@ -1,27 +1,34 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import os
+
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
 from app.core.config import settings
+import logging
 
-SMTP_HOST = settings.SMTP_HOST
-SMTP_PORT = settings.SMTP_PORT
-SMTP_USER = settings.SMTP_USER
-SMTP_PASSWORD = settings.SMTP_PASSWORD
-ADMIN_EMAIL = settings.ADMIN_EMAIL
+# Configure API key
+configuration = sib_api_v3_sdk.Configuration()
+configuration.api_key["api-key"] = settings.BREVO_API_KEY
+
+api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+    sib_api_v3_sdk.ApiClient(configuration)
+)
 
 
-def send_email(to_email: str, subject: str, html_content: str):
-    msg = MIMEMultipart("alternative")
-    msg["From"] = SMTP_USER
-    msg["To"] = to_email
-    msg["Subject"] = subject
+def send_mail(to_email: str, subject: str, html_content: str):
+    try:
+        email = sib_api_v3_sdk.SendSmtpEmail(
+            to=[{"email": to_email}],
+            sender={
+                "email": settings.ADMIN_EMAIL,
+                "name": "Wholesale Stationery"
+            },
+            subject=subject,
+            html_content=html_content,
+        )
 
-    msg.attach(MIMEText(html_content, "html"))
+        api_instance.send_transac_email(email)
+        logging.info(f"Brevo email sent to {to_email}")
+        return True
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.send_message(msg)
-    
-    return True
+    except ApiException as e:
+        logging.exception("Brevo email failed")
+        return False

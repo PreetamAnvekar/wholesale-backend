@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     SMTP_USER: str
     SMTP_PASSWORD: str
     ADMIN_EMAIL: str
-    
 
     class Config:
         env_file = ".env"

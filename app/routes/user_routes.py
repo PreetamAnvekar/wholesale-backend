@@ -24,9 +24,7 @@ from app.models.products import Product
 from app.models.cart import Cart
 from app.models.enquiries import Enquiry
 from app.models.enquiry_items import EnquiryItem
-from app.models.user_visits import UserVisit
-
-# ================= CONFIG =================
+from app.core.send_mail import send_email
 from app.core.config import settings
 from app.core.storage import CATEGORY_DIR, PRODUCT_DIR, BRAND_DIR
 
@@ -110,21 +108,8 @@ def list_categories(request: Request, response: Response, db: Session = Depends(
         {
             "category_id": c.category_id,
             "name": c.name,
-            "image": img(CATEGORY_DIR, c.image)
-        }
-        for c in db.query(Category).filter(Category.is_active == True).all()
-    ]
-
-@router.get("/brands")
-def list_brands(request: Request, response: Response, db: Session = Depends(get_db)):
-    session_id = get_user_session(request, response)
-    log_user_visit(db, request, session_id)
-
-    return [
-        {
-            "brand_id": b.brand_id,
-            "name": b.name,
-            "image": img(BRAND_DIR, b.image)
+            "description": c.description,
+            "image": os.path.join(CATEGORY_DIR, c.image)
         }
         for b in db.query(Brand).filter(Brand.is_active == True).all()
     ]
@@ -147,16 +132,24 @@ def products_by_category(
             "mrp": float(p.mrp),
             "price": float(p.price),
             "min_order_qty": p.min_order_qty,
-            "pack_size": p.pack_size,
-            "category": db.query(Category).filter(Category.category_id == p.category_id).first().name if p.category_id else p.category_id,
-            "brand": db.query(Brand).filter(Brand.brand_id == p.brand_id).first().name if p.brand_id else p.brand_id,
-            "image": img(PRODUCT_DIR, p.image)
+            "stock": p.stock,
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
-        for p in db.query(Product).filter(
-            Product.category_id == category_id,
-            Product.is_active == True
-        ).all()
+        for p in products
     ]
+
+@router.get("/brands")
+def list_brands(db: Session = Depends(get_db)):
+    brands = db.query(Brand).filter(Brand.is_active == True).all()
+    return [
+        {
+            "brand_id": b.brand_id,
+            "name": b.name,
+            "image": os.path.join(BRAND_DIR, b.image) if b.image else None
+        }
+        for b in brands
+    ]
+
 
 @router.get("/brands/{brand_id}/products")
 def products_by_brand(
@@ -175,21 +168,35 @@ def products_by_brand(
             "description": p.description,
             "mrp": float(p.mrp),
             "price": float(p.price),
-            "min_order_qty": p.min_order_qty,
-            "pack_size": p.pack_size,
-            "category": db.query(Category).filter(Category.category_id == p.category_id).first().name if p.category_id else p.category_id,
-            "brand": db.query(Brand).filter(Brand.brand_id == p.brand_id).first().name if p.brand_id else p.brand_id,
-            "image": img(PRODUCT_DIR, p.image)
+            "stock": p.stock,
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
-        for p in db.query(Product).filter(
-            Product.brand_id == brand_id,
-            Product.is_active == True
-        ).all()
+        for p in products
     ]
 
-# ==========================================================
-# 📦 PRODUCTS
-# ==========================================================
+@router.get("/products/{product_id}")
+def product_details(product_id: str, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(
+        Product.product_id == product_id,
+        Product.is_active == True
+    ).first()
+
+    if not product:
+        raise HTTPException(404, "Product not found")
+
+    return {
+        "product_id": product.product_id,
+        "name": product.name,
+        "description": product.description,
+        "price": float(product.price),
+        "mrp": float(product.mrp),
+        "min_order_qty": product.min_order_qty,
+        "stock": product.stock,
+        "category_id": product.category_id,
+        "brand_id": product.brand_id,
+        "image": os.path.join(PRODUCT_DIR, product.image)
+    }
+
 
 @router.get("/products")
 def list_products(request: Request, response: Response, db: Session = Depends(get_db)):
@@ -204,10 +211,11 @@ def list_products(request: Request, response: Response, db: Session = Depends(ge
             "mrp": float(p.mrp),
             "price": float(p.price),
             "min_order_qty": p.min_order_qty,
-            "pack_size": p.pack_size,
-            "category": db.query(Category).filter(Category.category_id == p.category_id).first().name if p.category_id else p.category_id,
-            "brand": db.query(Brand).filter(Brand.brand_id == p.brand_id).first().name if p.brand_id else p.brand_id,
-            "image": img(PRODUCT_DIR, p.image)
+            "stock": p.stock,
+            "category_id": db.query(Category).filter(Category.category_id == p.category_id).first().name if p.category_id else p.category_id,
+            "brand_id": db.query(Brand).filter(Brand.brand_id == p.brand_id).first().name if p.brand_id else p.brand_id,
+            "price": float(p.price),
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for p in db.query(Product).filter(Product.is_active == True).all()
     ]
@@ -244,47 +252,42 @@ def search_products(
             "description": p.description,
             "mrp": float(p.mrp),
             "price": float(p.price),
-            "min_order_qty": p.min_order_qty,
-            "pack_size": p.pack_size,
-            "category": db.query(Category).filter(Category.category_id == p.category_id).first().name if p.category_id else p.category_id,
-            "brand": db.query(Brand).filter(Brand.brand_id == p.brand_id).first().name if p.brand_id else p.brand_id,
-            "image": img(PRODUCT_DIR, p.image)
+            "image": os.path.join(PRODUCT_DIR, p.image)
         }
         for p in products
     ]
 
-@router.get("/products/{product_id}")
-def product_details(
-    product_id: str,
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db)
-):
-    session_id = get_user_session(request, response)
-    log_user_visit(db, request, session_id)
+@router.post("/products/filter")
+def filter_products(filters: dict, db: Session = Depends(get_db)):
+    query = db.query(Product).filter(Product.is_active == True)
 
-    p = db.query(Product).filter(
-        Product.product_id == product_id,
-        Product.is_active == True
-    ).first()
+    if filters.get("category_ids"):
+        query = query.filter(Product.category_id.in_(filters["category_ids"]))
 
-    if not p:
-        raise HTTPException(404, "Product not found")
+    if filters.get("brand_ids"):
+        query = query.filter(Product.brand_id.in_(filters["brand_ids"]))
 
-    return {
-        "product_id": p.product_id,
-        "name": p.name,
-        "description": p.description,
-        "price": float(p.price),
-        "mrp": float(p.mrp),
-        "min_order_qty": p.min_order_qty,
-        "stock": p.stock,
-        "image": img(PRODUCT_DIR, p.image)
-    }
+    if filters.get("min_price") is not None:
+        query = query.filter(Product.price >= filters["min_price"])
 
-# ==========================================================
-# 🛒 CART CRUD
-# ==========================================================
+    if filters.get("max_price") is not None:
+        query = query.filter(Product.price <= filters["max_price"])
+
+    if filters.get("min_order_qty") is not None:
+        query = query.filter(Product.min_order_qty >= filters["min_order_qty"])
+
+    products = query.all()
+
+    return [
+        {
+            "product_id": p.product_id,
+            "name": p.name,
+            "price": float(p.price),
+            "min_order_qty": p.min_order_qty,
+            "image": os.path.join(PRODUCT_DIR, p.image)
+        }
+        for p in products
+    ]
 
 @router.post("/cart/add")
 def add_to_cart(
@@ -401,10 +404,11 @@ def view_cart(
             "name": p.name,
             "qty": c.quantity,
             "price": float(p.price),
-            "total": float(total)
-        })
-
-    delivery = calculate_delivery(subtotal)
+            "total_price": float(c.quantity * p.price),
+            "image": os.path.join(PRODUCT_DIR, p.image)
+        }
+        for c, p in items
+    ]
 
     return {
         "items": cart,
@@ -418,7 +422,7 @@ def view_cart(
 # ==========================================================
 
 @router.post("/enquiry", status_code=201)
-def checkout(
+def submit_enquiry(
     customer_name: str,
     email: str,
     phone: str,
@@ -468,16 +472,75 @@ def checkout(
         db.query(Cart).filter(Cart.session_id == session_id).delete()
         db.commit()
 
-    except Exception:
-        db.rollback()
-        raise
+    admin_html = f"""
+    <h2>New Enquiry Received</h2>
+    <p><b>Name:</b> {customer_name}</p>
+    <p><b>Email:</b> {email}</p>
+    <p><b>Phone:</b> {phone}</p>
+    <p><b>Address:</b> {address}</p>
+    <table border="1" cellpadding="8">
+        <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+        {items_html}
+    </table>
+    <h3>Total Amount: ₹{total_amount}</h3>
+    """
 
-    log_user_visit(db, request, session_id)
+    user_html = f"""
+    <h2>Enquiry Submitted</h2>
+    <p>Dear {customer_name},</p>
+    <table border="1" cellpadding="8">
+        <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+        {items_html}
+    </table>
+    <h3>Total Amount: ₹{total_amount}</h3>
+    """
+
+    # Admin mail
+    try:
+        send_email(settings.ADMIN_EMAIL, "New Enquiry", admin_html)
+        admin_sent = True
+    except Exception:
+        admin_sent = False
+
+    db.add(EmailLog(
+        enquiry_id=enquiry.id,
+        email_to=settings.ADMIN_EMAIL,
+        sent_status=admin_sent
+    ))
+    db.commit()
+
+    # User mail
+    try:
+        send_email(email, "Enquiry Received", user_html)
+        user_sent = True
+    except Exception:
+        user_sent = False
+
+    db.add(EmailLog(
+        enquiry_id=enquiry.id,
+        email_to=email,
+        sent_status=user_sent
+    ))
+    db.commit()
 
     return {
-        "message": "Enquiry placed successfully",
-        "enquiry_id": enquiry.id,
-        "subtotal": subtotal,
-        "delivery": delivery,
-        "grand_total": grand_total
+        "message": "Enquiry submitted successfully",
+        "enquiry_id": enquiry.id
     }
+
+# ================= COMMON FORMATTER =================
+def format_products(products):
+    return [
+        {
+            "product_id": p.product_id,
+            "name": p.name,
+            "description": p.description,
+            "price": float(p.price),
+            "min_order_qty": p.min_order_qty,
+            "stock": p.stock,
+            "category_id": p.category_id,
+            "brand_id": p.brand_id,
+            "image": os.path.join(PRODUCT_DIR, p.image)
+        }
+        for p in products
+    ]

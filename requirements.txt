@@ -8,3 +8,4 @@ pydantic-settings
 python-multipart
 aiosmtplib
 sib-api-v3-sdk
+passlib

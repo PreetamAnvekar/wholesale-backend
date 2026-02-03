@@ -25,7 +25,7 @@ from app.models.products import Product
 from app.models.cart import Cart
 from app.models.enquiries import Enquiry
 from app.models.enquiry_items import EnquiryItem
-from app.core.send_mail import send_email
+from app.core.send_mail import send_mail
 from app.core.config import settings
 from app.core.storage import CATEGORY_DIR, PRODUCT_DIR, BRAND_DIR
 from app.models.user_visits import UserVisit
@@ -540,7 +540,7 @@ def submit_enquiry(
 
     # ---------- ADMIN EMAIL ----------
     try:
-        send_email(settings.ADMIN_EMAIL, "New Enquiry", admin_html)
+        send_mail(settings.ADMIN_EMAIL, "New Enquiry", admin_html)
         admin_sent = True
     except Exception:
         admin_sent = False
@@ -554,7 +554,7 @@ def submit_enquiry(
 
     # ---------- USER EMAIL ----------
     try:
-        send_email(email, "Enquiry Received", user_html)
+        send_mail(email, "Enquiry Received", user_html)
         user_sent = True
     except Exception:
         user_sent = False

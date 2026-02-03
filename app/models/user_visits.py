@@ -14,8 +14,8 @@ class UserVisit(Base):
     referer = Column(String(255), nullable=True)                 # from where user came
 
     device_type = Column(String(50))               # mobile / desktop
-    browser = Column(String(50))                   # chrome / firefox
-    os = Column(String(50))                        # windows / android
+    browser = Column(Text)                   # chrome / firefox
+    os = Column(Text)                        # windows / android
 
     visited_at = Column(
     DateTime(timezone=True),

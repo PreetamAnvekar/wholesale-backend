@@ -25,7 +25,7 @@ def seed():
             is_super_admin=True
         )
         admin2 = AdminUser(
-            username="vendor",
+            username="",
             password="vendor123",
             email="vendor@test.com",
             is_super_admin=False

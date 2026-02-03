@@ -20,6 +20,7 @@ from app.db.session import get_db
 # ================= MODELS =================
 from app.models.categories import Category
 from app.models.brand import Brand
+from app.models.email_logs import EmailLog
 from app.models.products import Product
 from app.models.cart import Cart
 from app.models.enquiries import Enquiry
@@ -27,6 +28,7 @@ from app.models.enquiry_items import EnquiryItem
 from app.core.send_mail import send_email
 from app.core.config import settings
 from app.core.storage import CATEGORY_DIR, PRODUCT_DIR, BRAND_DIR
+from app.models.user_visits import UserVisit
 
 router = APIRouter(prefix="/user", tags=["User"])
 
@@ -111,7 +113,7 @@ def list_categories(request: Request, response: Response, db: Session = Depends(
             "description": c.description,
             "image": os.path.join(CATEGORY_DIR, c.image)
         }
-        for b in db.query(Brand).filter(Brand.is_active == True).all()
+        for c in db.query(Category).filter(Category.is_active == True).all()
     ]
 
 @router.get("/categories/{category_id}/products")
@@ -123,6 +125,8 @@ def products_by_category(
 ):
     session_id = get_user_session(request, response)
     log_user_visit(db, request, session_id)
+
+    products = db.query(Product).filter(Product.category_id == category_id, Product.is_active == True).all()
 
     return [
         {
@@ -160,6 +164,7 @@ def products_by_brand(
 ):
     session_id = get_user_session(request, response)
     log_user_visit(db, request, session_id)
+    products_by_brand = db.query(Product).filter(Product.brand_id == brand_id, Product.is_active == True).all()
 
     return [
         {
@@ -170,8 +175,7 @@ def products_by_brand(
             "price": float(p.price),
             "stock": p.stock,
             "image": os.path.join(PRODUCT_DIR, p.image)
-        }
-        for p in products
+        }for p in products_by_brand
     ]
 
 @router.get("/products/{product_id}")
@@ -389,38 +393,41 @@ def view_cart(
 ):
     session_id = get_user_session(request, response)
 
-    items = db.query(Cart, Product).join(Product).filter(
-        Cart.session_id == session_id
-    ).all()
+    items = (
+        db.query(Cart, Product)
+        .join(Product, Cart.product_id == Product.product_id)
+        .filter(Cart.session_id == session_id)
+        .all()
+    )
 
     cart = []
-    subtotal = 0
+    subtotal = 0.0
 
     for c, p in items:
-        total = p.price * c.quantity
+        total = float(p.price) * c.quantity
         subtotal += total
+
         cart.append({
             "product_id": p.product_id,
             "name": p.name,
             "qty": c.quantity,
             "price": float(p.price),
-            "total_price": float(c.quantity * p.price),
+            "total_price": total,
             "image": os.path.join(PRODUCT_DIR, p.image)
-        }
-        for c, p in items
-    ]
+        })
+
+    delivery = 50.0 if subtotal > 0 else 0.0  # example logic
 
     return {
         "items": cart,
-        "subtotal": subtotal,
+        "subtotal": round(subtotal, 2),
         "delivery": delivery,
-        "grand_total": subtotal + delivery
+        "grand_total": round(subtotal + delivery, 2)
     }
-
+ 
 # ==========================================================
 # ✅ CHECKOUT
 # ==========================================================
-
 @router.post("/enquiry", status_code=201)
 def submit_enquiry(
     customer_name: str,
@@ -433,69 +440,105 @@ def submit_enquiry(
 ):
     session_id = get_user_session(request, response)
 
-    items = db.query(Cart, Product).join(Product).filter(
-        Cart.session_id == session_id
-    ).all()
+    items = (
+        db.query(Cart, Product)
+        .join(Product, Cart.product_id == Product.product_id)
+        .filter(Cart.session_id == session_id)
+        .all()
+    )
 
     if not items:
-        raise HTTPException(400, "Cart is empty")
+        raise HTTPException(status_code=400, detail="Cart is empty")
 
-    subtotal = sum(p.price * c.quantity for c, p in items)
+    subtotal = sum(float(p.price) * c.quantity for c, p in items)
     delivery = calculate_delivery(subtotal)
     grand_total = subtotal + delivery
 
     if grand_total < 1200:
-        raise HTTPException(400, "Minimum order value is ₹1200")
+        raise HTTPException(status_code=400, detail="Minimum order value is ₹1200")
+
+    # Build items HTML
+    items_html = ""
+    for c, p in items:
+        items_html += f"""
+        <tr>
+            <td>{p.name}</td>
+            <td>{c.quantity}</td>
+            <td>₹{float(p.price)}</td>
+            <td>₹{float(p.price) * c.quantity}</td>
+        </tr>
+        """
 
     try:
         enquiry = Enquiry(
             customer_name=customer_name,
             email=email,
             phone=phone,
-            address=address
+            address=address,
+            subtotal=subtotal,
+            delivery=delivery,
+            grand_total=grand_total
         )
         db.add(enquiry)
-        db.flush()
+        db.flush()  # get enquiry.id
 
         for c, p in items:
             if p.stock < c.quantity:
-                raise HTTPException(400, f"{p.name} out of stock")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{p.name} out of stock"
+                )
 
             p.stock -= c.quantity
 
             db.add(EnquiryItem(
                 enquiry_id=enquiry.id,
                 product_id=p.product_id,
-                quantity=c.quantity
+                quantity=c.quantity,
+                price=p.price
             ))
 
-        db.query(Cart).filter(Cart.session_id == session_id).delete()
+        db.query(Cart).filter(
+            Cart.session_id == session_id
+        ).delete()
+
         db.commit()
 
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # ---------- EMAIL TEMPLATES ----------
     admin_html = f"""
     <h2>New Enquiry Received</h2>
     <p><b>Name:</b> {customer_name}</p>
     <p><b>Email:</b> {email}</p>
     <p><b>Phone:</b> {phone}</p>
     <p><b>Address:</b> {address}</p>
+
     <table border="1" cellpadding="8">
         <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
         {items_html}
     </table>
-    <h3>Total Amount: ₹{total_amount}</h3>
+
+    <h3>Subtotal: ₹{subtotal}</h3>
+    <h3>Delivery: ₹{delivery}</h3>
+    <h2>Grand Total: ₹{grand_total}</h2>
     """
 
     user_html = f"""
-    <h2>Enquiry Submitted</h2>
+    <h2>Enquiry Submitted Successfully</h2>
     <p>Dear {customer_name},</p>
+
     <table border="1" cellpadding="8">
         <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
         {items_html}
     </table>
-    <h3>Total Amount: ₹{total_amount}</h3>
+
+    <h3>Grand Total: ₹{grand_total}</h3>
     """
 
-    # Admin mail
+    # ---------- ADMIN EMAIL ----------
     try:
         send_email(settings.ADMIN_EMAIL, "New Enquiry", admin_html)
         admin_sent = True
@@ -509,7 +552,7 @@ def submit_enquiry(
     ))
     db.commit()
 
-    # User mail
+    # ---------- USER EMAIL ----------
     try:
         send_email(email, "Enquiry Received", user_html)
         user_sent = True
@@ -525,7 +568,8 @@ def submit_enquiry(
 
     return {
         "message": "Enquiry submitted successfully",
-        "enquiry_id": enquiry.id
+        "enquiry_id": enquiry.id,
+        "grand_total": grand_total
     }
 
 # ================= COMMON FORMATTER =================
